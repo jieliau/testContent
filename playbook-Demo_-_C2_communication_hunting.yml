@@ -1,0 +1,664 @@
+contentitemexportablefields:
+  contentitemfields:
+    definitionid: ""
+    fromServerVersion: ""
+    itemVersion: ""
+    packID: ""
+    packName: ""
+    propagationLabels:
+    - all
+    toServerVersion: ""
+id: 0a0c39f4-27f9-441f-8744-4c1e19c8c1e8
+inputs:
+- description: ""
+  key: days
+  playbookInputQuery: null
+  required: false
+  value:
+    simple: "30"
+name: Demo - C2 communication hunting
+outputs: []
+sourceplaybookid: 233c03b4-bb15-424d-8a10-f2b0a9fa2614
+starttaskid: "0"
+tasks:
+  "0":
+    continueonerrortype: ""
+    id: "0"
+    ignoreworker: false
+    isautoswitchedtoquietmode: false
+    isoversize: false
+    nexttasks:
+      '#none#':
+      - "2"
+    note: false
+    quietmode: 0
+    separatecontext: false
+    skipunavailable: false
+    task:
+      brand: ""
+      id: 2496dc31-7f00-4c27-8ecd-9bd3124271fc
+      iscommand: false
+      name: ""
+      version: -1
+    taskid: 2496dc31-7f00-4c27-8ecd-9bd3124271fc
+    timertriggers: []
+    type: start
+    view: |-
+      {
+        "position": {
+          "x": 367.5,
+          "y": 20
+        }
+      }
+  "2":
+    continueonerrortype: ""
+    id: "2"
+    ignoreworker: false
+    isautoswitchedtoquietmode: false
+    isoversize: false
+    nexttasks:
+      '#none#':
+      - "6"
+    note: false
+    quietmode: 0
+    scriptarguments:
+      query:
+        simple: |-
+          config case_sensitive = false timeframe = ${inputs.days}d  //Setting query to be case-insensitive.
+          | dataset = xdr_data // Using the xdr dataset.
+          | alter host_broken = split(action_external_hostname, ".") //Extracting TLD from the remote host name.
+          | alter TLD = arrayindex(host_broken , -1)
+          | filter TLD not in ("com","local", "net", "org","gov","internal")// Filtering large known TLDs.
+          | filter (agent_os_sub_type contains "Server" or agent_os_type = AGENT_OS_LINUX) and action_external_hostname !="" //Filtering operation systems to be Windows server and Linux.
+          |filter actor_process_image_name != "dns.exe" and action_external_hostname not contains "pki.goog" and action_external_hostname not contains "adobe.io" and action_external_hostname not contains "aka.ms" and action_external_hostname not contains "certum.pl" //Filtering out noisy processes and noisy external legitimate remote hosts.
+          | filter actor_process_image_name not in ("chrome.exe", "iexplore.exe", "MicrosoftEdgeCP.exe", "firefox.exe", "opera.exe", "MicrosoftEdgeSH.exe", "msedge.exe", "GoogleUpdate.exe")// Filtering out browser processes.
+          | filter action_remote_ip != "10.*" and action_remote_ip != "192.168.*"//Filtering out internal IP addresses.
+          | alter rfc1918_172 = incidr(action_remote_ip, "172.16.0.0/12")
+          | filter rfc1918_172 = false
+          | fields agent_hostname as Server_Name, action_remote_ip as remote_ip, action_external_hostname as remote_hostname, actor_process_image_name as process_name, actor_process_image_sha256 as sha_256
+          | filter remote_hostname != Null and remote_hostname not contains  "docker" and remote_hostname not contains "jenkins" and remote_hostname not contains "elastic.co" and remote_hostname not contains "ipinfo.io"
+          //| comp count(_time) as Counter by remote_hostname, Server_Name, process_name // Counting how many times a remote_hostname/server/process triplets were used
+          //| sort desc Counter // Sorting by occurrences in a ascending order
+          | dedup remote_hostname
+      query_name:
+        simple: Lead
+    separatecontext: false
+    skipunavailable: false
+    task:
+      brand: Cortex XDR - XQL Query Engine
+      description: |-
+        Execute an XQL query and retrieve results of an executed XQL query API. The command will be executed every 10 seconds until results are retrieved or until a timeout error is raised.
+        When more than 1000 results are retrieved, the command will return a compressed gzipped JSON format file,
+        unless the argument 'parse_result_file_to_context' is set to true and then the results will be extracted to the context.
+      id: e1091e03-1d4a-443c-8149-5a58aea13e8f
+      iscommand: true
+      name: 'Hunting for any leads of interest '
+      script: Cortex XDR - XQL Query Engine|||xdr-xql-generic-query
+      type: regular
+      version: -1
+    taskid: e1091e03-1d4a-443c-8149-5a58aea13e8f
+    timertriggers: []
+    type: regular
+    view: |-
+      {
+        "position": {
+          "x": 367.5,
+          "y": 145
+        }
+      }
+  "5":
+    continueonerrortype: ""
+    id: "5"
+    ignoreworker: false
+    isautoswitchedtoquietmode: false
+    isoversize: false
+    note: false
+    quietmode: 0
+    separatecontext: false
+    skipunavailable: false
+    task:
+      brand: ""
+      id: 84980228-899d-4029-8d4f-39efc05e68a0
+      iscommand: false
+      name: Done
+      type: title
+      version: -1
+    taskid: 84980228-899d-4029-8d4f-39efc05e68a0
+    timertriggers: []
+    type: title
+    view: |-
+      {
+        "position": {
+          "x": 367.5,
+          "y": 1245
+        }
+      }
+  "6":
+    conditions:
+    - condition:
+      - - left:
+            iscontext: true
+            value:
+              simple: PaloAltoNetworksXQL.GenericQuery.results
+          operator: isNotEmpty
+          right:
+            value: {}
+      label: "yes"
+    continueonerrortype: ""
+    id: "6"
+    ignoreworker: false
+    isautoswitchedtoquietmode: false
+    isoversize: false
+    nexttasks:
+      '#default#':
+      - "5"
+      "yes":
+      - "21"
+    note: false
+    quietmode: 0
+    separatecontext: false
+    skipunavailable: false
+    task:
+      brand: ""
+      id: fc909662-2fd0-4e6f-88ef-82808295fb9e
+      iscommand: false
+      name: Check if result exist?
+      type: condition
+      version: -1
+    taskid: fc909662-2fd0-4e6f-88ef-82808295fb9e
+    timertriggers: []
+    type: condition
+    view: |-
+      {
+        "position": {
+          "x": 367.5,
+          "y": 300
+        }
+      }
+  "11":
+    continueonerrortype: ""
+    id: "11"
+    ignoreworker: false
+    isautoswitchedtoquietmode: false
+    isoversize: false
+    nexttasks:
+      '#none#':
+      - "14"
+    note: false
+    quietmode: 0
+    scriptarguments:
+      query:
+        simple: |-
+          config case_sensitive = false timeframe = ${inputs.days}d  //Setting query to be case-insensitive.
+          | dataset = xdr_data // Using the xdr dataset.
+          | filter (${filterstring})
+          | fields agent_hostname as Server_Name, action_remote_ip as remote_ip, action_external_hostname as remote_hostname, actor_process_image_name as process_name, actor_process_image_sha256 as sha_256
+          | comp count_distinct(Server_Name) as Num_Of_Hosts by remote_hostname
+          | sort desc Num_Of_Hosts // Sorting by occurrences in a ascending order
+      query_name:
+        simple: Suspected
+    separatecontext: false
+    skipunavailable: false
+    task:
+      brand: Cortex XDR - XQL Query Engine
+      description: |-
+        Execute an XQL query and retrieve results of an executed XQL query API. The command will be executed every 10 seconds until results are retrieved or until a timeout error is raised.
+        When more than 1000 results are retrieved, the command will return a compressed gzipped JSON format file,
+        unless the argument 'parse_result_file_to_context' is set to true and then the results will be extracted to the context.
+      id: 6684c258-e2fa-498f-86f5-94e5d318670d
+      iscommand: true
+      name: Gathering more information about how many hosts communicating to  suspected
+        domains
+      script: Cortex XDR - XQL Query Engine|||xdr-xql-generic-query
+      type: regular
+      version: -1
+    taskid: 6684c258-e2fa-498f-86f5-94e5d318670d
+    timertriggers: []
+    type: regular
+    view: |-
+      {
+        "position": {
+          "x": 50,
+          "y": 720
+        }
+      }
+  "13":
+    continueonerrortype: ""
+    id: "13"
+    ignoreworker: false
+    isautoswitchedtoquietmode: false
+    isoversize: false
+    nexttasks:
+      '#none#':
+      - "15"
+    note: false
+    quietmode: 0
+    scriptarguments:
+      query:
+        simple: |-
+          config case_sensitive = false timeframe = ${inputs.days}d  //Setting query to be case-insensitive.
+          | dataset = xdr_data // Using the xdr dataset.
+          | filter (${filterstring})
+          | fields agent_hostname as Server_Name, action_remote_ip as remote_ip, action_external_hostname as remote_hostname, actor_process_image_name as process_name, actor_process_image_sha256 as sha_256
+          | dedup remote_hostname,process_name
+      query_name:
+        simple: Process
+    separatecontext: false
+    skipunavailable: false
+    task:
+      brand: Cortex XDR - XQL Query Engine
+      description: |-
+        Execute an XQL query and retrieve results of an executed XQL query API. The command will be executed every 10 seconds until results are retrieved or until a timeout error is raised.
+        When more than 1000 results are retrieved, the command will return a compressed gzipped JSON format file,
+        unless the argument 'parse_result_file_to_context' is set to true and then the results will be extracted to the context.
+      id: c2f3ad25-065f-4168-807c-d5722c4598ad
+      iscommand: true
+      name: Find out the processes communicating with the suspected domains
+      script: Cortex XDR - XQL Query Engine|||xdr-xql-generic-query
+      type: regular
+      version: -1
+    taskid: c2f3ad25-065f-4168-807c-d5722c4598ad
+    timertriggers: []
+    type: regular
+    view: |-
+      {
+        "position": {
+          "x": 480,
+          "y": 720
+        }
+      }
+  "14":
+    continueonerrortype: ""
+    id: "14"
+    ignoreworker: false
+    isautoswitchedtoquietmode: false
+    isoversize: false
+    nexttasks:
+      '#none#':
+      - "16"
+    note: false
+    quietmode: 0
+    scriptarguments:
+      table:
+        complex:
+          accessor: results
+          filters:
+          - - left:
+                iscontext: true
+                value:
+                  simple: PaloAltoNetworksXQL.GenericQuery.query_name
+              operator: isEqualString
+              right:
+                value:
+                  simple: Suspected
+          root: PaloAltoNetworksXQL.GenericQuery
+      title:
+        simple: Suspect Domains
+    separatecontext: false
+    skipunavailable: false
+    task:
+      brand: ""
+      description: Converts a given array to an HTML table
+      id: 2cf82c11-afe2-41f6-8954-ffded9a0127f
+      iscommand: false
+      name: Get the suspected domains HTML Table
+      script: ConvertTableToHTML
+      type: regular
+      version: -1
+    taskid: 2cf82c11-afe2-41f6-8954-ffded9a0127f
+    timertriggers: []
+    type: regular
+    view: |-
+      {
+        "position": {
+          "x": 50,
+          "y": 895
+        }
+      }
+  "15":
+    continueonerrortype: ""
+    id: "15"
+    ignoreworker: false
+    isautoswitchedtoquietmode: false
+    isoversize: false
+    nexttasks:
+      '#none#':
+      - "16"
+    note: false
+    quietmode: 0
+    scriptarguments:
+      table:
+        complex:
+          accessor: results
+          filters:
+          - - left:
+                iscontext: true
+                value:
+                  simple: PaloAltoNetworksXQL.GenericQuery.query_name
+              operator: isEqualString
+              right:
+                value:
+                  simple: Process
+          root: PaloAltoNetworksXQL.GenericQuery
+      title:
+        simple: Processes
+    separatecontext: false
+    skipunavailable: false
+    task:
+      brand: ""
+      description: Converts a given array to an HTML table
+      id: 45d60b9c-dc88-459c-88e2-8ed4c013b20f
+      iscommand: false
+      name: Get the domain/process Table
+      script: ConvertTableToHTML
+      type: regular
+      version: -1
+    taskid: 45d60b9c-dc88-459c-88e2-8ed4c013b20f
+    timertriggers: []
+    type: regular
+    view: |-
+      {
+        "position": {
+          "x": 480,
+          "y": 895
+        }
+      }
+  "16":
+    continueonerrortype: ""
+    id: "16"
+    ignoreworker: false
+    isautoswitchedtoquietmode: false
+    isoversize: false
+    nexttasks:
+      '#none#':
+      - "5"
+    note: false
+    quietmode: 0
+    scriptarguments:
+      htmlBody:
+        simple: |-
+          Please check the following tables for C2 communications in past ${inputs.days} days
+          ${HTMLTable.[0]}${HTMLTable.[1]}${HTMLTable.[2]}${HTMLTable.[3]}
+      subject:
+        simple: Daily Report
+      to:
+        simple: jliau@paloaltonetworks.com
+    separatecontext: false
+    skipunavailable: false
+    task:
+      brand: Mail Sender (New)
+      description: Send an email
+      id: fe72df09-bcf7-4026-867b-62ef1d159aa6
+      iscommand: true
+      name: Send report
+      script: Mail Sender (New)|||send-mail
+      type: regular
+      version: -1
+    taskid: fe72df09-bcf7-4026-867b-62ef1d159aa6
+    timertriggers: []
+    type: regular
+    view: |-
+      {
+        "position": {
+          "x": 695,
+          "y": 1070
+        }
+      }
+  "17":
+    continueonerrortype: ""
+    id: "17"
+    ignoreworker: false
+    isautoswitchedtoquietmode: false
+    isoversize: false
+    nexttasks:
+      '#none#':
+      - "18"
+    note: false
+    quietmode: 0
+    scriptarguments:
+      query:
+        simple: |-
+          config case_sensitive = false timeframe = ${inputs.days}d  //Setting query to be case-insensitive.
+          | dataset = xdr_data // Using the xdr dataset.
+          | filter (${filterstring})
+          | fields agent_hostname as Server_Name, action_remote_ip as remote_ip, action_external_hostname as remote_hostname, actor_process_image_name as process_name, actor_process_image_sha256 as sha_256
+          | comp count(remote_hostname) as connection_counts by remote_hostname
+          | sort desc connection_counts
+      query_name:
+        simple: Connections
+    separatecontext: false
+    skipunavailable: false
+    task:
+      brand: Cortex XDR - XQL Query Engine
+      description: |-
+        Execute an XQL query and retrieve results of an executed XQL query API. The command will be executed every 10 seconds until results are retrieved or until a timeout error is raised.
+        When more than 1000 results are retrieved, the command will return a compressed gzipped JSON format file,
+        unless the argument 'parse_result_file_to_context' is set to true and then the results will be extracted to the context.
+      id: b3e30880-f342-4c87-85ea-94ae222b75ee
+      iscommand: true
+      name: Gathering the information for how many connection counts to suspected
+        domains
+      script: Cortex XDR - XQL Query Engine|||xdr-xql-generic-query
+      type: regular
+      version: -1
+    taskid: b3e30880-f342-4c87-85ea-94ae222b75ee
+    timertriggers: []
+    type: regular
+    view: |-
+      {
+        "position": {
+          "x": 910,
+          "y": 720
+        }
+      }
+  "18":
+    continueonerrortype: ""
+    id: "18"
+    ignoreworker: false
+    isautoswitchedtoquietmode: false
+    isoversize: false
+    nexttasks:
+      '#none#':
+      - "16"
+    note: false
+    quietmode: 0
+    scriptarguments:
+      table:
+        complex:
+          accessor: results
+          filters:
+          - - left:
+                iscontext: true
+                value:
+                  simple: PaloAltoNetworksXQL.GenericQuery.query_name
+              operator: isEqualString
+              right:
+                value:
+                  simple: Connections
+          root: PaloAltoNetworksXQL.GenericQuery
+      title:
+        simple: Connections
+    separatecontext: false
+    skipunavailable: false
+    task:
+      brand: ""
+      description: Converts a given array to an HTML table
+      id: deafcfeb-fe0d-4d3b-8108-70455edc26cc
+      iscommand: false
+      name: Get the connection count Table
+      script: ConvertTableToHTML
+      type: regular
+      version: -1
+    taskid: deafcfeb-fe0d-4d3b-8108-70455edc26cc
+    timertriggers: []
+    type: regular
+    view: |-
+      {
+        "position": {
+          "x": 910,
+          "y": 895
+        }
+      }
+  "19":
+    continueonerrortype: ""
+    id: "19"
+    ignoreworker: false
+    isautoswitchedtoquietmode: false
+    isoversize: false
+    nexttasks:
+      '#none#':
+      - "20"
+    note: false
+    quietmode: 0
+    scriptarguments:
+      query:
+        simple: "config case_sensitive = false timeframe = ${inputs.days}d  //Setting
+          query to be case-insensitive.\n| dataset = xdr_data // Using the xdr dataset.\n|
+          filter (${filterstring})\n| fields agent_hostname as Server_Name, action_remote_ip
+          as remote_ip, action_external_hostname as remote_hostname, actor_process_image_name
+          as process_name, actor_process_image_sha256 as sha_256\n| comp count(Server_Name)
+          as counter by remote_hostname, Server_Name \n| sort desc  counter\n| limit
+          10"
+      query_name:
+        simple: Top10
+    separatecontext: false
+    skipunavailable: false
+    task:
+      brand: Cortex XDR - XQL Query Engine
+      description: |-
+        Execute an XQL query and retrieve results of an executed XQL query API. The command will be executed every 10 seconds until results are retrieved or until a timeout error is raised.
+        When more than 1000 results are retrieved, the command will return a compressed gzipped JSON format file,
+        unless the argument 'parse_result_file_to_context' is set to true and then the results will be extracted to the context.
+      id: b92d1d36-0869-4e7c-8bbf-76d9715c3af5
+      iscommand: true
+      name: Find out the top 10 hosts to communicate suspicious domains
+      script: Cortex XDR - XQL Query Engine|||xdr-xql-generic-query
+      type: regular
+      version: -1
+    taskid: b92d1d36-0869-4e7c-8bbf-76d9715c3af5
+    timertriggers: []
+    type: regular
+    view: |-
+      {
+        "position": {
+          "x": 1340,
+          "y": 720
+        }
+      }
+  "20":
+    continueonerrortype: ""
+    id: "20"
+    ignoreworker: false
+    isautoswitchedtoquietmode: false
+    isoversize: false
+    nexttasks:
+      '#none#':
+      - "16"
+    note: false
+    quietmode: 0
+    scriptarguments:
+      table:
+        complex:
+          accessor: results
+          filters:
+          - - left:
+                iscontext: true
+                value:
+                  simple: PaloAltoNetworksXQL.GenericQuery.query_name
+              operator: isEqualString
+              right:
+                value:
+                  simple: Top10
+          root: PaloAltoNetworksXQL.GenericQuery
+      title:
+        simple: Top 10 Hosts
+    separatecontext: false
+    skipunavailable: false
+    task:
+      brand: ""
+      description: Converts a given array to an HTML table
+      id: 3f10f7ca-155b-4168-844f-ccc6cc1bcd32
+      iscommand: false
+      name: Get the Top 10 hosts Table
+      script: ConvertTableToHTML
+      type: regular
+      version: -1
+    taskid: 3f10f7ca-155b-4168-844f-ccc6cc1bcd32
+    timertriggers: []
+    type: regular
+    view: |-
+      {
+        "position": {
+          "x": 1340,
+          "y": 895
+        }
+      }
+  "21":
+    continueonerrortype: ""
+    id: "21"
+    ignoreworker: false
+    isautoswitchedtoquietmode: false
+    isoversize: false
+    nexttasks:
+      '#none#':
+      - "13"
+      - "11"
+      - "17"
+      - "19"
+    note: false
+    quietmode: 0
+    scriptarguments:
+      key:
+        simple: filterstring
+      value:
+        complex:
+          accessor: remote_hostname}
+          root: ${PaloAltoNetworksXQL.GenericQuery.results
+          transformers:
+          - args:
+              prefix:
+                value:
+                  simple: action_external_hostname contains "
+              suffix:
+                value:
+                  simple: '"'
+            operator: concat
+          - args:
+              separator:
+                value:
+                  simple: ' or '
+            operator: join
+    separatecontext: false
+    skipunavailable: false
+    task:
+      brand: ""
+      description: Set a value in context under the key you entered.
+      id: 8db6ed3a-5688-4c67-88b3-c0a2f722264b
+      iscommand: false
+      name: Set up the filter string
+      script: Set
+      type: regular
+      version: -1
+    taskid: 8db6ed3a-5688-4c67-88b3-c0a2f722264b
+    timertriggers: []
+    type: regular
+    view: |-
+      {
+        "position": {
+          "x": 695,
+          "y": 470
+        }
+      }
+version: -1
+view: |-
+  {
+    "linkLabelsPosition": {},
+    "paper": {
+      "dimensions": {
+        "height": 1290,
+        "width": 1670,
+        "x": 50,
+        "y": 20
+      }
+    }
+  }
